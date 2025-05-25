@@ -1,92 +1,108 @@
 import logging
+import random
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 from openai import OpenAI
 
-# تنظیمات توکن‌ها
+# توکن و API
 TELEGRAM_BOT_TOKEN = "7772214943:AAGXbULvJzWzYoGd4-mMac9ppIhckB8T_XU"
 OPENAI_API_KEY = "aa-lBU8qQMHlVTawjRet4GAZesnA2KUCpNzbY8ZhFaNYlYwRvBw"
-MASTER_ID = 6864140483  # آیدی ارباب
+MASTER_ID = 6864140483
 
-# اتصال به AvalAI
+# تنظیم کلاینت AvalAI
 client = OpenAI(
     api_key=OPENAI_API_KEY,
     base_url="https://api.avalai.ir/v1"
 )
 
-# تنظیم لاگ
+# لاگ
 logging.basicConfig(level=logging.INFO)
 
-# حافظه موقتی برای مکالمات
-user_memory = {}
+# حافظه مکالمه برای هر کاربر
+memory = {}
+
+# لیست استیکرهای رندوم دخترونه
+sticker_list = [
+    "CAACAgUAAxkBAAEBb4tgZK7JmHYAAY_KfCS5dy3V0zDJi9IAAr8KAAKxEclWi7Wxwx4kmn4wBA",
+    "CAACAgUAAxkBAAEBlc9mZkECWn5TnRRT7JcsU0v2OTTC9QACGwADwZxgDPz_hcP0lmcZMAQ",
+    "CAACAgUAAxkBAAEBlc1mZkD3Wq0mRvbfAEJh1A6HZDssvQAC9g8AArxfyFY7FJ5I4Gx3aTAE",
+    "CAACAgUAAxkBAAEBlc5mZkEfFtGPaS8Iueu7Uq0Er3c1qAACnAcAAtBxyFXuJPVIfY35wzAE"
+]
 
 async def handle_rias(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
 
-    message_text = update.message.text
-    user_id = update.message.from_user.id
-    user_name = update.message.from_user.first_name
+    text = update.message.text
+    user = update.message.from_user
+    user_id = user.id
+    user_name = user.first_name
+    chat_id = update.effective_chat.id
     bot_username = context.bot.username.lower()
-    is_group = update.effective_chat.type in ["group", "supergroup"]
 
-    # فقط جواب بده اگر در گروه، بهش ریپلای شده یا منشن شده
+    is_group = update.effective_chat.type in ["group", "supergroup"]
     should_respond = False
+
     if is_group:
-        if bot_username in message_text.lower() or \
-           (update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id):
+        if bot_username in text.lower() or "ریاس" in text.lower() or (
+            update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id
+        ):
             should_respond = True
     else:
         should_respond = True
 
-    # اگر "ریاس" توی پیام نیست، بی‌خیال شو
-    if "ریاس" not in message_text.lower() or not should_respond:
+    if not should_respond:
         return
 
-    is_master = user_id == MASTER_ID
-    display_name = "اربابم" if is_master else user_name
+    display_name = "اربابم" if user_id == MASTER_ID else user_name
 
-    # لحن و شخصیت ریاس
-    prompt = f"""
-تو یه دختر خوشگل، باهوش، مغرور و شیطون به اسم "ریاس گریموری" هستی.
-وقتی کسی اسمت رو صدا می‌زنه، با لحن دخترونه‌ی شیطون و مغرور جواب می‌دی.
-اگه اون شخص "ارباب"ت باشه ({display_name})، یه کم مهربون‌تر و وسوسه‌انگیزتر حرف می‌زنی، ولی هنوز غرور و نازتو داری.
+    # دریافت تاریخچه مکالمه
+    if user_id not in memory:
+        memory[user_id] = []
 
-مثال‌هایی از سبک حرف زدنت:
-- هووم؟ تو با من کاری داشتی؟ جالبه... ولی شاید دلم بخواد جواب بدم.
-- فقط چون اربابمی، اینو بهت می‌گم... وگرنه اهمیتی نمی‌دادم.
-- آخی، چه سوال ساده‌ای... انتظار بیشتری ازت داشتم!
+    memory[user_id].append({"role": "user", "content": text})
 
-حالا اینو بهم گفت:
-{message_text}
+    # محدود کردن حافظه به 6 پیام آخر
+    conversation_history = memory[user_id][-6:]
 
-جواب بده با همین لحن دخترونه و مغرور و شیطون:
+    # اضافه کردن نقش ریاس
+    system_prompt = f"""
+تو ریاس گریموری هستی، یه دختر خوشگل، مغرور، باهوش و شیطون.
+با همه مغرور و تیکه‌دار حرف می‌زنی، ولی با {display_name} چون اربابت هست، یه کم مهربونی و ناز می‌کنی.
+از شکلک‌های دخترونه استفاده کن، ولی جمله‌هات کوتاه و باحال باشه. حرفاتو شیرین و جذاب بزن.
 """
 
     try:
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": system_prompt},
+                *conversation_history
             ]
         )
 
-        reply_text = response.choices[0].message.content.strip()
+        reply = response.choices[0].message.content.strip()
 
-        # فقط یک‌بار ریپلای کن
         await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=reply_text,
+            chat_id=chat_id,
+            text=reply,
             reply_to_message_id=update.message.message_id
         )
+
+        # انتخاب استیکر رندوم
+        random_sticker = random.choice(sticker_list)
+        await context.bot.send_sticker(chat_id=chat_id, sticker=random_sticker)
+
+        # ذخیره جواب ریاس
+        memory[user_id].append({"role": "assistant", "content": reply})
 
     except Exception as e:
+        logging.error(f"خطا در پاسخ: {e}")
         await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="ریاس الان حال نداره، بعداً بیا بازی کنیم... 😒",
+            chat_id=chat_id,
+            text="ریاس الان حس حرف زدن نداره... ولی بعداً شاید بخواد شیطونی کنه 😏",
             reply_to_message_id=update.message.message_id
         )
-        logging.error(f"خطا: {e}")
 
 # اجرای برنامه
 if __name__ == "__main__":
