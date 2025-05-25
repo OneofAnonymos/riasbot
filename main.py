@@ -1,17 +1,21 @@
 import logging
-import requests
+import openai
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 
-# اطلاعات ربات و ارباب
+# کلیدهای اصلی
 TELEGRAM_BOT_TOKEN = "7772214943:AAGXbULvJzWzYoGd4-mMac9ppIhckB8T_XU"
-FREE_API_EMAIL = "AmirzAli121990@gmail.com"
-MASTER_ID = 6864140483  # << این تویی!
+OPENAI_API_KEY = "aa-lBU8qQMHlVTawjRet4GAZesnA2KUCpNzbY8ZhFaNYlYwRvBw"
+MASTER_ID = 6864140483
 
-# حافظه کوتاه‌مدت برای هر کاربر
-user_memory = {}
-
+# تنظیمات لاگ
 logging.basicConfig(level=logging.INFO)
+
+# کلید OpenAI
+openai.api_key = OPENAI_API_KEY
+
+# حافظه کوتاه‌مدت
+user_memory = {}
 
 async def handle_rias(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
@@ -36,7 +40,7 @@ async def handle_rias(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         is_master = user_id == MASTER_ID
         display_name = "اربابم" if is_master else user_name
-        tone = "با لحن عاشقانه و مطیع" if is_master else "با لحن محترمانه ولی سرد"
+        tone = "با لحن عاشقانه و مطیع" if is_master else "با لحن محترمانه و سرد"
 
         previous_messages = user_memory.get(user_id, [])
         if len(previous_messages) > 5:
@@ -45,10 +49,10 @@ async def handle_rias(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_memory[user_id] = previous_messages + [f"{display_name}: {user_question}"]
 
         prompt = f"""
-تو نقش شیطان مونث زیبایی به اسم "ریاس گریموری" هستی.
-تو فقط عاشق و مطیع {display_name} هستی.
-وقتی او صحبت می‌کند، تو {tone} پاسخ می‌دهی.
-با بقیه مؤدب ولی جدی هستی.
+تو نقش یک شیطان مونث مرموز به اسم "ریاس گریموری" هستی.
+تو فقط مطیع و عاشق {display_name} هستی.
+وقتی او چیزی می‌پرسه، {tone} و اغواگرانه جواب می‌دی.
+با دیگران مودب ولی سرد هستی.
 
 مکالمات قبلی:
 {chr(10).join(previous_messages)}
@@ -56,18 +60,16 @@ async def handle_rias(update: Update, context: ContextTypes.DEFAULT_TYPE):
 الان {display_name} گفت:
 {user_question}
 
-ریاس پاسخ می‌دهد:
+پاسخ ریاس:
         """
 
         try:
-            model = 'gpt-3.5-turbo'
-            url = f"http://195.179.229.119/gpt/api.php?prompt={requests.utils.quote(prompt)}&api_key={requests.utils.quote(FREE_API_EMAIL)}&model={model}"
-            response = requests.get(url)
-            response.raise_for_status()
-            data = response.json()
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}]
+            )
 
-            reply_text = data.get("response", "ریاس حرفی برای گفتن نداره...")
-
+            reply_text = response['choices'][0]['message']['content']
             user_memory[user_id].append(f"ریاس: {reply_text}")
 
             await context.bot.send_message(
@@ -79,12 +81,12 @@ async def handle_rias(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text="ریاس الان حال نداره 😒",
+                text=f"ریاس الان حال نداره 😒\n({str(e)})",
                 reply_to_message_id=update.message.message_id
             )
 
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_rias))
-    print("ریاس آماده‌ی اطاعت از اربابشه... در همه جا!")
+    print("ریاس در خدمت اربابشه...")
     app.run_polling()
